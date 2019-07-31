@@ -2,21 +2,22 @@ from main.app import db
 import datetime
 
 
-scout_views = db.Table('scout_views',
-		db.Column('scout_id', db.Integer, db.ForeignKey('scout.id')),
-		db.Column('view_id', db.Integer, db.ForeignKey('view.id'))
-	)
 
+scout_messages = db.Table('scout_messages',
+		db.Column('scout_id', db.Integer, db.ForeignKey('scout.id')),
+		db.Column('message_id', db.Integer, db.ForeignKey('message.id')),
+	)
 
 class Scout(db.Model):
 	id = db.Column(db.Integer, primary_key=True)
-	username = db.Column(db.String(100), unique=True, nullable=False)
+	first_name = db.Column(db.String(100))
+	last_name = db.Column(db.String(100))
+	username = db.Column(db.String(100))
 	email = db.Column(db.String(100), unique=True, nullable=False)
-	password = db.Column(db.String(100), unique=True, nullable=False)
-	image_name = db.Column(db.String(400), default='avatar')
-	date_of_birth = db.Column(db.DateTime, default=datetime.datetime.now)
-	views = db.relationship('View', secondary=scout_views,
-		backref=db.backref('scouts', lazy='dynamic')
+	password = db.Column(db.String(100), nullable=False)
+	image_name = db.Column(db.String(400), default='avatar.png')
+	messages = db.relationship('Message', secondary=scout_messages,
+			backref=db.backref('scouts', lazy='dynamic')
 		)
 
 	def __init__(self, *args, **kwargs):
@@ -26,46 +27,116 @@ class Scout(db.Model):
 		return '<Scout: %s >' % self.username
 
 
-manager_views = db.Table('manager_views',
+manager_messages = db.Table('manager_messages',
 		db.Column('manager_id', db.Integer, db.ForeignKey('manager.id')),
-		db.Column('view_id', db.Integer, db.ForeignKey('view.id'))
+		db.Column('message_id', db.Integer, db.ForeignKey('message.id')),
 	)
 
 
 class Manager(db.Model):
 	id = db.Column(db.Integer, primary_key=True)
-	username = db.Column(db.String(100), unique=True, nullable=False)
+	first_name = db.Column(db.String(100))
+	last_name = db.Column(db.String(100))
 	email = db.Column(db.String(100), unique=True, nullable=False)
-	password = db.Column(db.String(100), unique=True, nullable=False)
+	password = db.Column(db.String(100), nullable=False)
 	image_name = db.Column(db.String(400), default='avatar.png')
-	date_of_birth = db.Column(db.DateTime, default=datetime.datetime.now)
-	views = db.relationship('View', secondary=manager_views,
-		backref=db.backref('managers', lazy='dynamic')
+	messages = db.relationship('Message', secondary=manager_messages,
+			backref=db.backref('managers', lazy='dynamic')
 		)
 
 	def __init__(self, *args, **kwargs):
 		super(Manager, self).__init__(*args, **kwargs)
 
 	def __repr__(self):
-		return '<Manager: %s >' % self.username
+		return '<Manager; First Name: %s >' % self.first_name
+
+
+class Message(db.Model):
+	id = db.Column(db.Integer, primary_key=True)
+	tag = db.Column(db.String(100))
+	sender_status = db.Column(db.String(100))
+	receiver_status = db.Column(db.String(100))
+	receiver_id = db.Column(db.Integer)
+	sender_id = db.Column(db.Integer)
+	body = db.Column(db.Text)
+	timestamp = db.Column(db.DateTime, default=datetime.datetime.now)
+
+	def __init__(self, *args, **kwargs):
+		super(Message, self).__init__(*args, **kwargs)
+
+	def __repr__(self):
+		return '<Message: %s>' % self.body
+
+
+player_stats = db.Table('player_stats',
+		db.Column('player_id', db.Integer, db.ForeignKey('player.id')),
+		db.Column('stats_id', db.Integer, db.ForeignKey('stats.id')),
+	)
+
+
+player_performance = db.Table('player_performance',
+		db.Column('player_id', db.Integer, db.ForeignKey('player.id')),
+		db.Column('performance_id', db.Integer, db.ForeignKey('performance.id'))
+	)
 
 
 class Player(db.Model):
 	id = db.Column(db.Integer, primary_key=True)
-	name = db.Column(db.String(100))
-	date_of_birth = db.Column(db.DateTime, default=datetime.datetime.now)
-	goals = db.Column(db.Integer, default=0)
-	assists = db.Column(db.Integer, default=0)
-	yellow_cards = db.Column(db.Integer, default=0)
-	red_cards = db.Column(db.Integer, default=0)
+	first_name = db.Column(db.String(100))
+	last_name = db.Column(db.String(100))
 	role = db.Column(db.String(100), nullable=False)
-	image_name = db.Column(db.String(400), unique=True, nullable=False)
+	curr_perf = db.Column(db.Float, default=0.00)
+	photo_name = db.Column(db.String(400), unique=True, nullable=False)
+	date_of_birth = db.Column(db.DateTime, nullable=False)
+	week = db.Column(db.Integer, default=0)
+	num_matches = db.Column(db.Integer, default=0)
+	stats = db.relationship('Stats', secondary=player_stats,
+			backref=db.backref('players', lazy='dynamic')
+		)
+	performance = db.relationship('Performance', secondary=player_performance,
+			backref=db.backref('players', lazy='dynamic'),
+		)
 
 	def __init__(self, *args, **kwargs):
 		super(Player, self).__init__(*args, **kwargs)
 
 	def __repr__(self):
-		return '<Player: %s >' % self.name
+		return '<Player: %s >' % self.first_name
+
+
+class Stats(db.Model):
+	id = db.Column(db.Integer, primary_key=True)
+	shots_for = db.Column(db.Integer, default=0)
+	shots_for_ontarget = db.Column(db.Integer, default=0)
+	goals_for = db.Column(db.Integer, default=0)
+	assists = db.Column(db.Integer, default=0)
+	crosses = db.Column(db.Integer, default=0)
+	crosses_successful = db.Column(db.Integer, default=0)
+	interceptions = db.Column(db.Integer, default=0)
+	clearances = db.Column(db.Integer, default=0)
+	tackles = db.Column(db.Integer, default=0)
+	fouls = db.Column(db.Integer, default=0)
+	shots_against = db.Column(db.Integer, default=0)
+	shots_blocked = db.Column(db.Integer, default=0)
+	goals_against = db.Column(db.Integer, default=0)
+	saves = db.Column(db.Integer, default=0)
+
+	def __init__(self, *args, **kwargs):
+		super(Stats, self).__init__(*args, **kwargs)
+
+
+class Performance(db.Model):
+	id = db.Column(db.Integer, primary_key=True)
+	week = db.Column(db.Integer, default=0)
+	performance = db.Column(db.Float)
+
+	def __init__(self, *args, **kwargs):
+		super(Performance, self).__init__(*args, **kwargs)
+
+
+	def __repr__(self):
+		return '<Performance: %s>' % self.week
+
 
 
 club_manager = db.Table('club_manager',
@@ -85,6 +156,9 @@ class Club(db.Model):
 	name = db.Column(db.String(100), unique=True, nullable=False)
 	league = db.Column(db.String(100), default='Uganda Premier League')
 	logo_name = db.Column(db.String(200), default='avatar.png')
+	home_rating = db.Column(db.Float, default=0.0)
+	away_rating = db.Column(db.Float, default=0.0)
+	ave_rating = db.Column(db.Float, default=0.0)
 	manager = db.relationship('Manager', secondary=club_manager,
 			backref=db.backref('clubs', lazy='dynamic')
 		)
@@ -97,79 +171,6 @@ class Club(db.Model):
 
 	def __repr__(self):
 		return '<Club: %s >' % self.name
-
-view_replies = db.Table('view_replies',
-		db.Column('view_id', db.Integer, db.ForeignKey('view.id')),
-		db.Column('reply_id', db.Integer, db.ForeignKey('reply.id'))
-	)
-
-
-class View(db.Model):
-	id = db.Column(db.Integer, primary_key=True)
-	body = db.Column(db.Text, nullable=False)
-	created_time = db.Column(db.DateTime, default=datetime.datetime.now)
-	image_name = db.Column(db.String(400), nullable=True)
-	replies = db.relationship('Reply', secondary=view_replies,
-		backref=db.backref('views', lazy='dynamic')
-		)
-
-	def __init__(self, *args, **kwargs):
-		super(View, self).__init__(*args, **kwargs)
-
-	def __repr__(self):
-		return '<View: %s >' % self.body
-	
-
-class Reply(db.Model):
-	id = db.Column(db.Integer, primary_key=True)
-
-	creator = db.Column(db.String(100), nullable=False)
-	body = db.Column(db.Text, nullable=False)
-	created_time = db.Column(db.DateTime, default=datetime.datetime.now)
-
-	def __init__(self, *args, **kwargs):
-		super(Reply, self).__init__(*args, **kwargs)
-
-	def __repr__(self):
-		return '<Reply: %s >' % self.body
-
-
-class Match(db.Model):
-	id = db.Column(db.Integer, primary_key=True)
-	league = db.Column(db.Integer, default=1)
-	competition = db.Column(db.String(100))
-	home = db.Column(db.String(100), nullable=False)
-	away = db.Column(db.String(100), nullable=False)
-	home_score = db.Column(db.Integer)
-	away_score = db.Column(db.Integer)
-	done = db.Column(db.String(100), default=0)
-	stadium = db.Column(db.String(100), nullable=False)
-	date = db.Column(db.DateTime, nullable=False)
-
-	def __init__(self, *args, **kwargs):
-		super(Match, self).__init__(*args, **kwargs)
-
-	def __repr__(self):
-		return '<Match: Home - %s >' % self.home
-
-
-class NonleagueMatch(db.Model):
-	id = db.Column(db.Integer, primary_key=True)
-	league = db.Column(db.Integer, default=0)
-	competition = db.Column(db.String(100))
-	home = db.Column(db.String(100), nullable=False)
-	away = db.Column(db.String(100), nullable=False)
-	home_score = db.Column(db.Integer)
-	away_score = db.Column(db.Integer)
-	done = db.Column(db.String(100), default=0)
-	stadium = db.Column(db.String(100), nullable=False)
-	date = db.Column(db.DateTime, nullable=False)
-
-	def __init__(self, *args, **kwargs):
-		super(NonleagueMatch, self).__init__(*args, **kwargs)
-
-	def __repr__(self):
-		return '<Match: Home - %s >' % self.home
 
 
 class FeedbackComment(db.Model):

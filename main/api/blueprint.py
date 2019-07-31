@@ -1,10 +1,13 @@
 from flask import Blueprint, jsonify, redirect, url_for, request
 from main.app import app
-from main.api.access_control.account_manager import AccountSet, MockAccount
+from main.api.access_control.account_manager import AccountSet, ScoutAccount, ManagerAccount
+from main.api.data.generic import Generic
+from main.api.data.custom import Custom
 from main.api.access_control.logger import Logger
 from main.api.data.data import *
 from main.api.data.structured_date import structure_date
-from main.api.data.statistics import *
+from main.api.data.player_performance import SetPerformance
+from main.api.data.stat import Stat
 
 
 api = Blueprint('api', __name__, static_folder='uploads')
@@ -13,42 +16,81 @@ api = Blueprint('api', __name__, static_folder='uploads')
 def index():
     return jsonify({ 'state': {} })
 
-@api.route('/create_account', methods=['GET', 'POST'])
-def create_account():
+@api.route('/create_manager_account', methods=['GET', 'POST'])
+def create_manager_account():
     invalid_email = 'INVALID_EMAIL'
     invalid_username = 'INVALID_USERNAME'
     all_valid = 'TRUE'
     error = 'ERROR'
 
     try:
-        email, username, password = request.form['email'], request.form['username'], request.form['password']
-        _account = MockAccount(email, username, password)
-        if not _account.is_email_valid():
+        email, first_name, last_name = request.form['email'], request.form['first_name'], request.form['last_name']
+        club_id, password = request.form['club_id'], request.form['password']
+        _account = ManagerAccount(club_id, first_name, last_name, email, password)
+        if not _account.is_manager_email_valid():
             return jsonify({ 'validity': invalid_email })
-
-        elif not _account.is_username_valid():
-            return jsonify({ 'validity': invalid_username })
 
         else:
             _account.send_verification()
-            return jsonify({ 'validity': all_valid })
+            return jsonify({ 'success': 1 })
 
-    except:
-        return jsonify({ 'validity': error })
+    except Exception as e:
+        return jsonify({ 'fail': 1 })
 
 
-@api.route('/verify_code', methods=['GET', 'POST'])
-def verify_code():
+@api.route('/create_scout_account', methods=['GET', 'POST'])
+def create_scout_account():
+    invalid_email = 'INVALID_EMAIL'
+    invalid_username = 'INVALID_USERNAME'
+    all_valid = 'TRUE'
+    error = 'ERROR'
+
+    try:
+        first_name, last_name = request.form['first_name'], request.form['last_name']
+        email, password = request.form['email'], request.form['password']
+        _account = ScoutAccount(first_name=first_name, last_name=last_name, email=email,
+                password=password
+            )
+        if not _account.is_scout_email_valid():
+            return jsonify({ 'validity': invalid_email })
+
+        else:
+            _account.send_verification()
+            return jsonify({ 'success': 1 })
+
+    except Exception as e:
+        return jsonify({ 'fail': 1 })
+
+
+@api.route('/verify_manager_code', methods=['GET', 'POST'])
+def verify_manager_code():
     code = request.form['code']
     account_set = AccountSet()
-    returnCode = account_set.is_code_valid(code)
+    returnCode = account_set.is_manager_code_valid(code)
 
     if returnCode == 0:
         return jsonify({'code': 0})
 
     elif returnCode == 1:
-        account_cred = account_set.get_credentials()
-        return jsonify({'code': 1, 'account_cred': account_cred })
+        user_id = account_set.get_user_id()
+        return jsonify({'code': 1, 'user_id': user_id })
+
+    elif returnCode == -1:
+        return jsonify({'code': -1 })
+
+
+@api.route('/verify_scout_code', methods=['GET', 'POST'])
+def verify_scout_code():
+    code = request.form['code']
+    account_set = AccountSet()
+    returnCode = account_set.is_scout_code_valid(code)
+
+    if returnCode == 0:
+        return jsonify({'code': 0})
+
+    elif returnCode == 1:
+        user_id = account_set.get_user_id()
+        return jsonify({'code': 1, 'user_id': user_id })
 
     elif returnCode == -1:
         return jsonify({'code': -1 })
@@ -58,9 +100,32 @@ def verify_code():
 def login_manager():
     if request.method == 'POST':
         try:
-            username, password = request.form['username'], request.form['password']
-            manager_obj = Logger().login_manager(username, password)
-            return jsonify({ 'username': manager_obj.username })
+            email, password = request.form['email'], request.form['password']
+            if Logger().is_manager(email):
+                manager = Logger().login_manager(email, password)
+                return jsonify({ 'user_id': manager['id'] })
+
+            else:
+                return jsonify({ 'user_id': '' })
+
+        except Exception as e:
+            return jsonify({ 'fail': 1 })
+    else:
+        return jsonify({ 'fail': 1 })
+
+
+@api.route('/login_scout', methods=['GET', 'POST'])
+def login_scout():
+    if request.method == 'POST':
+        try:
+            email, password = request.form['email'], request.form['password']
+            if Logger().is_scout(email):
+                scout = Logger().login_scout(email, password)
+                return jsonify({ 'user_id': scout['id'] })
+
+            else:
+                return jsonify({ 'fail': 1 })
+
         except Exception as e:
             return jsonify({ 'fail': 1 })
     else:
@@ -69,96 +134,199 @@ def login_manager():
 
 @api.route('/logout', methods=['GET', 'POST'])
 def logout():
+    username = request.form['username']
+    Logger().logout(username)
+    return jsonify({ 'success': 1 })
     if request.method == 'POST':
         try:
             username = request.form['username']
-            user_obj = Logger().logout(username)
-            user = { 'id': user_obj.id }
-            return jsonify({ 'user': user })
-        except:
-            return jsonify({ 'user': {} })
+            Logger().logout(username)
+            return jsonify({ 'success': 1 })
+        except Exception as e:
+            return jsonify({ 'fail': str(e) })
     else:
-        return jsonify({ 'user': {} })
+        return jsonify({ 'fail': 1 })
 
 
-@api.route('/post_view', methods=['GET', 'POST'])
-def post_view():
+@api.route('/delete_account', methods=['GET', 'POST'])
+def delete_account():
     if request.method == 'POST':
         try:
-            username, body = request.form['username'], request.form['body']
-            if Logger().is_logged_in(username):
-                view = UserHandler().set_view(user_id, body)
-                return jsonify({'view': True})
-            else:
-                return jsonify({'not_loggedin': True})
+            user_id, user_status = int(request.form['user_id']), request.form['user_status']
+            Logger().delete_account(user_id, user_status)
+            return jsonify({ 'success': True })
 
-        except:
-            return jsonify({'view': 0})
+        except Exception as e:
+            return jsonify({ 'fail': True })
 
     else:
-        return  jsonify({'view': 0})
+        return jsonify({ 'fail': True })
 
 
-@api.route('/get_all_views')
-def get_all_views():
+@api.route('/update_photo', methods=['GET', 'POST'])
+def update_photo():
+    if request.method == 'POST':
+        try:
+            user_id, user_status = request.form['user_id'], request.form['user_status']
+            image = request.files['image']
+
+            if user_status == 'scout':
+                ScoutHandler().update_photo(scout_id=user_id, image=image )
+                user = ScoutHandler().get_scout(user_id)
+                return jsonify({ 'user': user })
+
+            else:
+                ManagerHandler().update_photo(manager_id=user_id, image=image)
+                user = ManagerHandler().get_manager(user_id)
+                return jsonify({ 'user': user })
+
+        except Exception as e:
+            return jsonify({ 'fail': True })
+
+    else:
+        return jsonify({ 'fail': True })
+
+
+@api.route('/get_all_managers')
+def get_all_managers():
     try:
-        views_list = UserHandler().get_all_views()
-        return jsonify({'views': views_list})
+        managers = ManagerHandler().get_all_managers_with_clubs()
+        return jsonify({ 'managers': managers })
+
     except:
-        return jsonify({'views': [] })
+        return jsonify({ 'fail': 1 })
 
 
-@api.route('/get_all_replies')
-def get_all_replies():
-    try:
-        return jsonify({ 'replies': UserHandler().get_replies(view_id) })
-    except Exception as e:
-        return jsonify({ 'replies': [] })
-
-
-@api.route('/set_reply', methods=['GET', 'POST'])
-def set_reply():
+@api.route('/get_scout', methods=['GET', 'POST'])
+def get_scout():
     if request.method == 'POST':
         try:
-            view_id, creator_id, body = request.form['view_id'], request.form['creator_id'], request.form['body']
-            if Logger().is_logged_in(creator_id) :
-                reply = UserHandler().set_reply(view_id, creator_id, body)
-                return jsonify({ 'reply': reply })
-            else:
-                return jsonify({ 'reply': -1 })
+            scout_id = request.form['scout_id']
+            scout = ScoutHandler().get_scout(scout_id)
+            return jsonify({ 'user': scout })
+
         except:
-            return jsonify({ 'reply': {} })
+            return jsonify({ 'fail': 1})
+
     else:
-        return jsonify({ 'reply': {} })
+        return jsonify({'fail': 1})
+
+
+@api.route('/get_manager', methods=['GET', 'POST'])
+def get_manager():
+    if request.method == 'POST':
+        try:
+            manager_id = request.form['manager_id']
+            manager = ManagerHandler().get_manager(manager_id)
+            return jsonify({ 'user': manager })
+
+        except:
+            return jsonify({ 'fail': 1})
+
+    else:
+        return jsonify({'fail': 1})
+
+
+@api.route('/get_all_scouts', methods=['GET', 'POST'])
+def get_all_scouts():
+    if request.method == 'POST':
+        try:
+            user_id, user_status = int(request.form['user_id']), request.form['user_status']
+            scouts = ScoutHandler().filter_scouts(user_id, user_status)
+            return jsonify({ 'scouts': scouts })
+
+        except:
+            return jsonify({ 'fail': 1 })
+
+    else:
+        return jsonify({ 'fail': 1 })
 
 
 @api.route('/add_player', methods=['GET', 'POST'])
 def add_player():
     if request.method == 'POST':
-        try:
-            username, name, role = request.form['username'], request.form['name'], request.form['role']
+        try: 
+            first_name, last_name = request.form['first_name'], request.form['last_name']
+            role, year, month = request.form['role'], request.form['year'], request.form['month']
+            date, club_name = request.form['date'], request.form['club_name']
             photo = request.files['photo']
-            player_obj = PlayerHandler().set_player(name, role, photo)
-            player = { 'id': player_obj.id }
-            return jsonify({ 'player': player })
-        except:
-            return jsonify({ 'player': {} })
+            player_obj = PlayerHandler().set_player(club_name, first_name, last_name, role, photo, year, month, date)
+            return jsonify({ 'success': True, 'player_id': player_obj.id })
+        except Exception as e:
+            return jsonify({ 'fail': str(e) })
     else:
-        return jsonify({ 'player': {} })
+        return jsonify({ 'fail': 1 })
 
 
-@api.route('/get_all_players')
-def get_all_players():
-    try:
-        season_obj, players_obj = PlayerHandler().get_all_players()
-        season = { 'id': season_obj.id, 'name': season_obj.name, 'year': season_obj.year }
-        players = [
-            {'id': player.id, 'name': player.name, 'role': player.role, 'image_name': player.image_name }
-            for player in players_obj
-        ]
-        return jsonify({ 'season': season, 'players': players })
-    except:
-        return jsonify({ 'players': [] })
+@api.route('/get_custom_players', methods=['GET', 'POST'])
+def get_custom_players():
+    if request.method == 'POST':
+        try:
+            username = request.form['username']
+            custom = Custom(username)
+            players = custom.get_custom_players()
+            return jsonify({ 'players': players })
+
+        except Exception as e:
+            return jsonify({ 'fail': str(e) })
+
+    else:
+        return jsonify({ 'fail': 1 })
+
+
+@api.route('/get_goal_keepers')
+def get_goal_keepers():
+    players = PlayerHandler().get_goal_keepers()
+    return jsonify({ 'players': players })
+
+@api.route('/get_defenders')
+def get_defenders():
+    players = PlayerHandler().get_defenders()
+    return jsonify({ 'players': players })
+
+
+@api.route('/get_midfielders')
+def get_midfielders():
+    players = PlayerHandler().get_midfielders()
+    return jsonify({ 'players': players })
+
+
+@api.route('/get_forwards')
+def get_forwards():
+    players = PlayerHandler().get_forwards()
+    return jsonify({ 'players': players })
+
+
+
+@api.route('/get_generic_players', methods=['GET', 'POST'])
+def get_generic_players():
+    if request.method == 'POST':
+        try:
+            generic = Generic()
+            players = generic.get_generic_players()
+            return jsonify({ 'players': players })
+
+        except Exception as e:
+            return jsonify({ 'fail': str(e) })
+
+    else:
+        return jsonify({ 'fail': 1 })
+
+
+@api.route('/get_my_players', methods=['GET', 'POST'])
+def get_my_players():
+    
+    if request.method == 'POST':
+        try:
+            manager_id = int(request.form['manager_id'])
+            club_name, players = PlayerHandler().get_my_players(manager_id)
+            return jsonify({ 'players': players, 'club_name': club_name })
+
+        except Exception as e:
+            return jsonify({ 'fail': True })
+
+    else:
+        return jsonify({ 'fail': True })
 
 
 @api.route('/get_player', methods=['GET', 'POST'])
@@ -166,16 +334,83 @@ def get_player():
     if request.method == 'POST':
         try:
             player_id = request.form['player_id']
-            player_obj = PlayerHandler().get_player(player_id)
-            player = {'id': player_obj.id, 'name': player_obj.name, 'role': player_obj.role,
-            'image_name': player_obj.image_name }
+            player = PlayerHandler().get_player(player_id)
             return jsonify({ 'player': player })
 
         except:
-            return jsonify({'player': {} })
+            return jsonify({'fail': 1 })
 
     else:
-        return jsonify({'player': {} })
+        return jsonify({'fail': 1 })
+
+
+@api.route('/update_player', methods=['GET', 'POST'])
+def update_player():
+    if request.method == 'POST':
+        try:
+            player_id, role = int(request.form['player_id']), request.form['role']
+            first_name, last_name = request.form['first_name'], request.form['last_name']
+            player = PlayerHandler().update_player(player_id=player_id, first_name=first_name,
+                    last_name=last_name, role=role
+                )
+            return jsonify({ 'player_id': player.id })
+
+        except Exception as e:
+            return jsonify({ 'fail': True })
+
+    else:
+        return jsonify({ 'fail': True })
+
+
+@api.route('/update_player_with_photo', methods=['GET', 'POST'])
+def update_player_with_photo():
+    if request.method == 'POST':
+        try:
+            player_id, role = int(request.form['player_id']), request.form['role']
+            first_name, last_name = request.form['first_name'], request.form['last_name']
+            photo = request.files['photo']
+            player = PlayerHandler().update_player_with_photo(player_id=player_id, first_name=first_name,
+                    last_name=last_name, role=role, photo=photo
+                )
+            return jsonify({ 'player_id': player.id })
+
+        except Exception as e:
+            return jsonify({ 'fail': True })
+
+    else:
+        return jsonify({ 'fail': True })
+
+
+
+
+@api.route('/delete_player', methods=['GET', 'POST'])
+def delete_player():
+    if request.method == 'POST':
+        try:
+            player_id = int(request.form['player_id'])
+            player = PlayerHandler().delete_player(player_id)
+            return jsonify({ 'player_id': player.id })
+
+        except Exception as e:
+            return jsonify({ 'fail': True })
+
+    else:
+        return jsonify({ 'fail': True })
+
+
+@api.route('/get_player_with_stats', methods=['GET', 'POST'])
+def get_player_with_stats():   
+    if request.method == 'POST':
+        try:
+            player_id = request.form['player_id']
+            stat = Stat(player_id=player_id)
+            player = stat.get_player_stats()
+            return jsonify({ 'player': player })
+        except Exception as e:
+            return jsonify({ 'fail': 1 })
+
+    else:
+        return jsonify({ 'fail': 1 })
 
 
 @api.route('/edit_player', methods=['GET', 'POST'])
@@ -204,103 +439,14 @@ def edit_player():
         return jsonify({ 'player': {} })
 
 
-@api.route('/delete_player', methods=['GET', 'POST'])
-def delete_player():
-    if request.method == 'POST':
-        try:
-            player_id = request.form['player_id']
-            PlayerHandler().delete_player(player_id)
-            season_obj, players_obj = PlayerHandler().get_all_players()
-            season = { 'id': season_obj.id, 'name': season_obj.name, 'year': season_obj.year }
-            players = [
-                {'id': player.id, 'name': player.name, 'role': player.name, 'image_name': player.image_name }
-                for player in players_obj
-            ]
-            return jsonify({ 'season': season, 'players': players })
-
-        except:
-            return jsonify({'player': {} })
-
-    else:
-        return jsonify({'player': {} })
-
-
-
-
-@api.route('/get_all_matches')
-def get_all_matches():
-    matches_obj = MatchHandler().get_all_matches()
-    matches = [
-        { 'id': match.id, 'league': match.league, 'competition': match.competition, 'home': match.home, 
-        'away': match.away,
-        'done': match.done, 'home_score': match.home_score, 'away_score': match.away_score,
-        'stadium': match.stadium, 'date': structure_date(match.date)} for match in  matches_obj
-    ]
-    return jsonify({ 'matches': matches })
-
-
-@api.route('/add_league_match', methods=['GET', 'POST'])
-def add_league_match():
-    season_id = request.form['season_id']
-    home_id, away_id, stadium = request.form['home_id'], request.form['away_id'], request.form['stadium']
-    year, month, date = request.form['year'], request.form['month'], request.form['date']
-    hour, minutes = request.form['hour'], request.form['mins']
-    year, month, date, hour, minutes = int(year), int(month), int(date), int(hour), int(minutes)
-    match_obj = MatchHandler().add_league_match(season_id, home_id, away_id, stadium, year, month, date,
-        hour, minutes)
-    match = { 'id': match_obj.id }
-    return jsonify({ 'match': match })
-
-
-@api.route('/add_nonleague_match', methods=['GET', 'POST'])
-def add_nonleague_match():
-    competition = request.form['competition']
-    home, away, stadium = request.form['other_home'], request.form['other_away'], request.form['other_stadium']
-    year, month, date = request.form['other_year'], request.form['other_month'], request.form['other_date']
-    hour, minutes = request.form['other_hour'], request.form['other_mins']
-    year, month, date, hour, minutes = int(year), int(month), int(date), int(hour), int(minutes)
-    match_obj = MatchHandler().add_nonleague_match(competition, home, away, stadium, year, month,
-        date, hour, minutes)
-    match = { 'id': match_obj.id }
-    return jsonify({ 'match': match })
-
-
-@api.route('/delete_league_match', methods=['GET', 'POST'])
-def delete_league_match():
-    match_id = request.form['match_id']
-    MatchHandler().delete_league_match(match_id)
-    matches_obj = MatchHandler().get_all_matches()
-    matches = [
-        { 'id': match.id, 'league': match.league, 'competition': match.competition, 'home': match.home,
-        'away': match.away,
-        'done': match.done, 'home_score': match.home_score, 'away_score': match.away_score,
-        'stadium': match.stadium, 'date': structure_date(match.date)} for match in  matches_obj
-    ]
-    return jsonify({ 'matches': matches })
-
-
-@api.route('/delete_nonleague_match', methods=['GET', 'POST'])
-def delete_nonleague_match():
-    match_id = request.form['match_id']
-    MatchHandler().delete_nonleague_match(match_id)
-    matches_obj = MatchHandler().get_all_matches()
-    matches = [
-        { 'id': match.id, 'league': match.league, 'competition': match.competition, 'home': match.home,
-        'away': match.away,
-        'done': match.done, 'home_score': match.home_score, 'away_score': match.away_score,
-        'stadium': match.stadium, 'date': structure_date(match.date)} for match in  matches_obj
-    ]
-    return jsonify({ 'matches': matches })
-
-
 @api.route('/add_club', methods=['GET', 'POST'])
 def add_club():
     if request.method == 'POST':
         try:
             name, league = request.form['name'], request.form['league']
             logo = request.files['logo']
-            ClubHandler().set_club(name, league, logo)
-            return jsonify({ 'success': 1 })
+            club = ClubHandler().set_club(name, league, logo)
+            return jsonify({ 'success': 1, 'club_id': club.id })
 
         except Exception as e:
             return jsonify({'fail': 1})
@@ -314,7 +460,7 @@ def get_all_clubs():
     try:
         clubs_obj = ClubHandler().get_all_clubs()
         clubs = [ { 'id': club.id, 'name': club.name, 'logo_name': club.logo_name,
-            'league': club.league, 'num_players': len(club.players)
+            'league': club.league, 'ave_rating': round(club.ave_rating * 100), 'num_players': len(club.players)
         } for club in clubs_obj]
         return jsonify({ 'clubs': clubs })
 
@@ -322,13 +468,36 @@ def get_all_clubs():
         return jsonify({ 'fail': 1 })
 
 
+@api.route('/get_clubs_without_managers')
+def get_clubs_without_managers():
+    try:
+        clubs = ClubHandler().get_clubs_without_managers()
+        return jsonify({ 'clubs': clubs })
+    except Exception as e:
+        return jsonify({ 'fail': 1 })
+
+
+@api.route('/get_detailed_club', methods=['GET', 'POST'])
+def get_detailed_club():
+    if request.method == 'POST':
+        try:
+            club_id = request.form['club_id']
+            club = ClubHandler().get_detailed_club(club_id)
+            return jsonify({ 'club': club })
+
+        except Exception as e:
+            return jsonify({ 'fail': True })
+
+    else:
+        return jsonify({ 'fail': True })
+
+
 @api.route('/get_club_by_manager', methods=['GET', 'POST'])
 def get_club_by_manager():
     if request.method == 'POST':
         try:
-            manager = request.form['manager']
-            club_obj = ClubHandler().get_club_by_manager(manager)
-            club = { 'id': club_obj.id, 'name': club_obj.name, 'league': club_obj.league }
+            manager_id = int(request.form['manager_id'])
+            club = ClubHandler().get_club_by_manager(manager_id)
             return jsonify({ 'club': club })
 
         except Exception as e:
@@ -336,6 +505,17 @@ def get_club_by_manager():
 
     else:
         return jsonify({ 'fail': 1 })
+
+
+@api.route('/get_clubs_with_players')
+def get_clubs_with_players():
+    try:
+        clubs = ClubHandler().get_clubs_with_players()
+        return jsonify({ 'clubs': clubs })
+
+    except Exception as e:
+        return jsonify({ 'fail': 1})
+
 
 
 @api.route('/delete_club', methods=['GET', 'POST'])
@@ -360,178 +540,31 @@ def delete_club():
         return jsonify({'data': [] })
 
 
-'''
-    Urls for getting statistcal values
-'''
-@api.route('/get_top_scorers')
-def get_top_scorers():
-    top_scorers_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.goals }
-        for player in top_scorers()
-    ]
-    return jsonify({ 'top_scorers_list': top_scorers_list })
-
-
-@api.route('/get_top_assists')
-def get_top_assists():
-    top_assists_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.assists }
-        for player in top_assists()
-    ]
-    return jsonify({ 'top_assists_list': top_assists_list })
-
-
-@api.route('/get_top_yellow')
-def get_top_yellow():
-    top_yellow_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.yellow_cards }
-        for player in top_yellow()
-    ]
-    return jsonify({ 'top_yellow_list': top_yellow_list })
-
-
-@api.route('/get_top_red')
-def get_top_red():
-    top_red_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.red_cards }
-        for player in top_red()
-    ]
-    return jsonify({ 'top_red_list': top_red_list })
-
-
-@api.route('/get_statistics')
-def get_statistics():
-    top_scorers_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.goals }
-        for player in top_scorers()
-    ]
-
-    top_assists_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.assists }
-        for player in top_assists()
-    ] 
-    
-    top_yellow_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.yellow_cards }
-        for player in top_yellow()
-    ] 
-
-    top_red_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.red_cards }
-        for player in top_red()
-    ]
-
-    return jsonify({ 'top_scorers_list': top_scorers_list, 'top_assists_list': top_assists_list,
-        'top_yellow_list': top_yellow_list, 'top_red_list': top_red_list })
-
-
-'''
-    urls for exact ( non cumulative ) raw statistical values
-'''
-@api.route('/persist_goals', methods=['GET', 'POST'])
-def persist_goals():
-    player_id, goals = request.form['player_id'], request.form['goals']
-    PlayerHandler().persist_player_goals(player_id, goals)
-    top_scorers_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.goals }
-        for player in top_scorers()
-    ]
-    return jsonify({ 'top_scorers_list': top_scorers_list })
-
-
-@api.route('/persist_assists', methods=['GET', 'POST'])
-def persist_assists():
-    player_id, assists = request.form['player_id'], request.form['assists']
-    PlayerHandler().persist_player_assists(player_id, assists)
-    top_assists_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.assists }
-        for player in top_assists()
-    ]
-    return jsonify({ 'top_assists_list': top_assists_list })
-
-
-@api.route('/persist_yellow_cards', methods=['GET', 'POST'])
-def persist_yellow_cards():
-    player_id, yellow_cards = request.form['player_id'], request.form['yellow_cards']
-    PlayerHandler().persist_player_yellow_cards(player_id, yellow_cards)
-    top_yellow_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.yellow_cards }
-        for player in top_yellow()
-    ]
-    return jsonify({ 'top_yellow_list': top_yellow_list })
-
-
-@api.route('/persist_red_cards', methods=['GET', 'POST'])
-def persist_red_cards():
-    player_id, red_cards = request.form['player_id'], request.form['red_cards']
-    PlayerHandler().persist_player_red_cards(player_id, red_cards)
-    top_red_list = [
-        { 'id': player.id, 'name': player.name, 'value': player.red_cards }
-        for player in top_red()
-    ]
-    return jsonify({ 'top_red_list': top_red_list })
-
-
-'''
-    urls for cumulative raw statistical values
-'''
-@api.route('/cumulate_goals', methods=['GET', 'POST'])
-def cumulative_goals():
-    return jsonify({'playerObj': {} })
-
-
-@api.route('/cumulate_assists', methods=['GET', 'POST'])
-def cumulate_assists():
-    return jsonify({'playerObj': {} })
-
-
-@api.route('/cumulate_yellow_cards', methods=['GET', 'POST'])
-def cumulate_yellow_cards():
-    return jsonify({'playerObj': {} })
-
-
-@api.route('/cumulate_red_cards', methods=['GET', 'POST'])
-def cumulate_red_cards():
-    return jsonify({'playerObj': {} })
-
-@api.route('/get_feedback_comment')
-def get_feedback_comment():
-    try:
-        feedback_obj = FeedbackHandler().get_feedback_comment()
-        feedback = { 'id': feedback_obj.id, 'body': feedback_obj.body }
-        print('here')
-        return jsonify({ 'feedback': feedback })
-
-    except:
-        return jsonify({ 'feedback': {} })
-
-@api.route('/update_feedback', methods=['GET', 'POST'])
-def update_feedback():
+@api.route('/add_stats', methods=['GET', 'POST'])
+def add_stats():
     if request.method == 'POST':
-        try:
-            feedback_id, feedback_body = request.form['feedback_id'], request.form['feedback_body']
-            feedback_obj = FeedbackHandler().update_feedback(feedback_id, feedback_body)
-            feedback = { 'id': feedback_obj.id, 'body': feedback_obj.body }
-            return jsonify({ 'feedback': feedback })
+        player_id, player_status = request.form['player_id'], request.form['player_status']
+        home_id, away_id = request.form['home_id'], request.form['away_id']
+        home_score, away_score = request.form['home_score'], request.form['away_score']
 
-        except:
-            return jsonify({ 'feedback': {} })
+        shots_for, shots_for_ontarget = request.form['shots_for'], request.form['shots_for_ontarget']
+        goals_for, assists = request.form['goals_for'], request.form['assists']
+        crosses, crosses_successful = request.form['crosses'], request.form['crosses_successful']
+
+        interceptions, clearances = request.form['interceptions'], request.form['clearances']
+        tackles, fouls = request.form['tackles'], request.form['fouls']
+        shots_against, shots_blocked = request.form['shots_against'], request.form['shots_against_blocked']
+        goals_against, saves = request.form['goals_against'], request.form['saves']
+        set_performance = SetPerformance(player_id=player_id, player_status=player_status,
+                home_id=home_id, away_id=away_id, home_score=home_score, away_score=away_score,
+                shots_for=shots_for, shots_for_ontarget=shots_for_ontarget,
+                goals_for=goals_for, assists=assists, crosses=crosses,
+                crosses_successful=crosses_successful, interceptions=interceptions,
+                clearances=clearances, tackles=tackles, fouls=fouls, shots_against=shots_against,
+                shots_blocked=shots_blocked, goals_against=goals_against, saves=saves
+            )
+        return jsonify({ 'success': True, 'player_id': player_id })
 
     else:
-        return jsonify({ 'feedback': {} })
+        return jsonify({ 'success': False })
 
-
-@api.route('/set_new_feedback', methods=['GET', 'POST'])
-def set_new_feedback():
-    if request.method == 'POST':
-        try:
-            feedback_body = request.form['feedback_body']
-            feedback_obj = FeedbackHandler().set_feedback(feedback_body)
-            feedback = { 'id': feedback_obj.id, 'body': feedback_obj.body }
-            return jsonify({ 'feedback': feedback })
-
-        except:
-            return jsonify({ 'feedback': {} })
-
-    else:
-        return jsonify({ 'feedback': {} })

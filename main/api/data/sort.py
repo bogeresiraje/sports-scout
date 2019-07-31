@@ -58,3 +58,22 @@ class Sort:
 			seq_copy[j] = curr_obj
 
 		self._sequence = seq_copy
+
+
+class CustomSort(object):
+	def __init__(self, sequence=None):
+		self._sequence = sequence
+
+	def sort_by_rating(self):
+		seq_copy = self._sequence
+		for i in range(1, len(seq_copy)):
+			curr_obj = seq_copy[i]
+			curr_for = curr_obj['curr_perf']
+			j = i
+			while j > 0 and seq_copy[j-1]['curr_perf'] < curr_for:
+				seq_copy[j] = seq_copy[j-1]
+				j -= 1
+
+			seq_copy[j] = curr_obj
+
+		return seq_copy

@@ -16,58 +16,110 @@ class AccountSet:
 		self._pending_accounts.append(mock_account)
 
 	# cred -> credentials
-	def is_code_valid(self, code):
+	def is_manager_code_valid(self, code):
 		is_valid = 0
 		account = None
 		for cred in self._pending_accounts:
 			if(cred[0] == code):
 				account = cred
-				if self.is_code_expired(cred[4]):
-					is_valid = -1
-				else:
-					self.create_new_account(cred)
-					is_valid = 1
+				self.create_manager_account(cred)
+				is_valid = 1
+
+				break
+
+		return is_valid
+
+	def is_scout_code_valid(self, code):
+		is_valid = 0
+		for acc in self._pending_accounts:
+			if acc[0] == code:
+				self.create_scout_account(acc)
+				is_valid = 1
 
 				break
 
 		return is_valid
 
 	def is_code_expired(self, created_time):
-		max_waiting_time = datetime.timedelta(minutes=10)
+		max_waiting_time = datetime.timedelta(minutes=20)
 		return ( datetime.datetime.now() - created_time ) > max_waiting_time
 
-	def create_new_account(self, cred):
-		user = UserHandler().set_user(cred[1], cred[2], cred[3])
+	def create_manager_account(self, acc):
+		manager = ManagerHandler().set_manager(acc[1], acc[2], acc[3], acc[4], acc[5])
 		for index in range(len(self._pending_accounts)):
-			if account[index][0] == cred[0]:
+			if self._pending_accounts[index][0] == acc[0]:
 				self._pending_accounts.pop(index)
 				break
-		Logger().login(user.username, user.password)
-		self._cred = {'id': user.id, 'username': user.username }
-
-	def get_credentials(self):
-		return self._cred
+		Logger().direct_login(manager.id)
+		self.user_id = manager.id
 
 
-class MockAccount:
-	def __init__(self, email, username, password):
-		self._email = email
-		self._username = username
-		self._password = password
+	def create_scout_account(self, acc):
+		scout = ScoutHandler().set_scout(first_name=acc[1], last_name=acc[2], email=acc[3],
+				password=acc[4]
+			)
+		for index in range(len(self._pending_accounts)):
+			if self._pending_accounts[index][0] == acc[0]:
+				self._pending_accounts.pop(index)
+				break
 
-	def is_email_valid(self):
-		return UserHandler().is_email_valid(self._email)
+		Logger().direct_login(scout.id)
+		self.user_id = scout.id
 
-	def is_username_valid(self):
-		return UserHandler().is_username_valid(self._username)
+	def get_user_id(self):
+		return self.user_id
+
+
+class ScoutAccount:
+	def __init__(self, first_name='', last_name='', email='', password=''):
+		self.first_name = first_name
+		self.last_name = last_name
+		self.email = email
+		self.password = password
+
+	def is_manager_email_valid(self):
+		return ManagerHandler().is_email_valid(self.email)
+
+	def is_scout_email_valid(self):
+		return ScoutHandler().is_email_valid(self.email)
 
 	def add_to_pending(self):
-		pending_account = (self._code, self._username, self._email, self._password, datetime.datetime.now())
+		pending_account = (self._code, self.first_name, self.last_name, self.email, self.password,
+		 		datetime.datetime.now()
+		 	)
 		account_set = AccountSet()
 		account_set.add_user(pending_account)
 
 	def send_verification(self):
 		code = random.randint(1000,9999)
 		self._code = str(code)
-		send_mail(self._code, self._email)
+		send_mail(self._code, self.email)
 		self.add_to_pending()
+
+
+class ManagerAccount:
+	def __init__(self, club_id, first_name, last_name, email, password):
+		self.email = email
+		self.first_name = first_name
+		self.last_name = last_name
+		self.club_id = club_id
+		self.password = password
+
+	def is_manager_email_valid(self):
+		return ManagerHandler().is_email_valid(self.email)
+
+	def is_scout_email_valid(self):
+		return ScoutHandler().is_email_valid(self.email)
+
+	def add_to_pending(self):
+		pending_account = (self.code, self.club_id, self.first_name, self.last_name, self.email, self.password,
+		datetime.datetime.now())
+		account_set = AccountSet()
+		account_set.add_user(pending_account)
+
+	def send_verification(self):
+		code = random.randint(1000,9999)
+		self.code = str(code)
+		send_mail(self.code, self.email)
+		self.add_to_pending()
+
